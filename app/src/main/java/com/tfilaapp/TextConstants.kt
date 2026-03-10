@@ -20,7 +20,7 @@ object TextConstants {
      * ISO-8601 format so it's easy to parse into LocalDateTime.
      * Example: 2026-03-10T18:30
      */
-    const val TARGET_DATE_TIME_ISO: String = "2026-03-10T15:30"
+    const val TARGET_DATE_TIME_ISO: String = "2026-03-10T20:00"
 
     /**
      * Converts ISO-8601 date-time text into a [LocalDateTime].
