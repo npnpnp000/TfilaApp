@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">TfilaApp</string>
+
+    <!-- Hebrew strings -->
+    <string name="title_welcome">ברוכים הבאים</string>
+    <string name="title_countdown">ספירה והקרנת טקסט</string>
+    <string name="button_test">בדיקה</string>
+    <string name="countdown_label">ספירה לאחור: %1$d</string>
+</resources>

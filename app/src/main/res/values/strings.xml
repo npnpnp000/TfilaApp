@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">TfilaApp</string>
+
+    <string name="title_welcome">Welcome</string>
+    <string name="title_countdown">Countdown &amp; text</string>
+    <string name="button_test">Test</string>
+    <string name="countdown_label">Countdown: %1$d</string>
+</resources>
