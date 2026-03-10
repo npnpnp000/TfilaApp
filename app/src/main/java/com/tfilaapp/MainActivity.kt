@@ -3,6 +3,7 @@ package com.tfilaapp
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -31,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -45,6 +47,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.time.Duration
 import java.time.LocalDateTime
 
 class MainActivity : ComponentActivity() {
@@ -70,6 +73,9 @@ object AppSchedulerState {
 
     // Flag that, when set to true by the background checker, causes navigation to Page 2.
     var navigateToPage2 by mutableStateOf(false)
+
+    // Message to show when the scheduled prayer time has already passed.
+    var prayerPassedMessage: String? by mutableStateOf(null)
 }
 
 private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -87,7 +93,7 @@ private var hasStarted = false
  */
 @RequiresApi(Build.VERSION_CODES.O)
 fun onStart() {
-    Log.e("onStart", "start")
+    Log.e("onStart", "onStart")
     if (hasStarted) return
     hasStarted = true
 
@@ -138,34 +144,61 @@ data class ExternalData(
 )
 
 /**
- * Background loop that checks date once a day and time once a minute on the target date.
+ * Background loop that:
+ * 1. If the full target date+time has already passed, shows a message and stops.
+ * 2. If the target date is in the future (not today), waits and re-checks every day at 00:00.
+ * 3. On the target date, periodically compares the full clock time to the full target time
+ *    and navigates to Page 2 as soon as the target moment is reached or passed.
  */
 @RequiresApi(Build.VERSION_CODES.O)
 private suspend fun runBackgroundScheduleChecker(
     targetDateTime: LocalDateTime
 ) {
+    val targetDate = targetDateTime.toLocalDate()
+
     while (true) {
         val now = LocalDateTime.now()
-        Log.e("ScheduleCheckerNow", "$now.toLocalTime()")
-        Log.e("ScheduleCheckerTarget", "$targetDateTime.toLocalTime()")
-        // Check if the correct date has arrived
-        if (now.toLocalDate() == targetDateTime.toLocalDate()) {
-            // On the correct date: check time every minute
-            val nowTime = now.toLocalTime()
-            val targetTime = targetDateTime.toLocalTime()
+        val today = now.toLocalDate()
 
-            if (nowTime.hour == targetTime.hour && nowTime.minute == targetTime.minute) {
+        Log.e("runBackgroundScheduleChecker", "now=$now, target=$targetDateTime")
+
+        // 1. If the full target date+time has already passed, show a message and stop.
+        if (now.isAfter(targetDateTime)) {
+            withContext(Dispatchers.Main) {
+                AppSchedulerState.prayerPassedMessage = "The prayer has already passed."
+            }
+            return
+        }
+
+        // 2. If the date is in the future (not equal), wait until the next midnight and check again.
+        if (today.isBefore(targetDate)) {
+            val nextMidnight = today.plusDays(1).atStartOfDay()
+            val millisUntilMidnight = Duration.between(now, nextMidnight).toMillis()
+            if (millisUntilMidnight > 0) {
+                delay(millisUntilMidnight)
+            } else {
+                // Fallback: small delay to avoid a tight loop
+                delay(60_000)
+            }
+            continue
+        }
+
+        // 3. Dates are the same and the time has not yet passed – periodically check the full clock.
+        while (true) {
+            val current = LocalDateTime.now()
+
+            Log.e("runBackgroundScheduleChecker-inner", "current=$current, target=$targetDateTime")
+
+            // If we reached or passed the full target date+time, navigate to Page 2.
+            if (!current.isBefore(targetDateTime)) {
                 withContext(Dispatchers.Main) {
                     AppSchedulerState.navigateToPage2 = true
                 }
-                break
+                return
             }
 
-            // Wait one minute before checking the time again
-            delay(60_000)
-        } else {
-            // Not yet the correct date – wait roughly one day before re-checking
-            delay(24L * 60L * 60L * 1_000L)
+            // Otherwise, wait a short period before checking again.
+            delay(10_000) // check roughly every 10 seconds
         }
     }
 }
@@ -176,6 +209,8 @@ private suspend fun runBackgroundScheduleChecker(
 fun TfilaApp() {
     var currentPage by remember { mutableStateOf(1) }
 
+    val context = LocalContext.current
+
     onStart()
 
     // React to background navigation trigger
@@ -183,6 +218,15 @@ fun TfilaApp() {
     LaunchedEffect(navigateToPage2Flag) {
         if (navigateToPage2Flag) {
             currentPage = 2
+        }
+    }
+
+    // Show a toast if the prayer time has already passed
+    val prayerMessage = AppSchedulerState.prayerPassedMessage
+    LaunchedEffect(prayerMessage) {
+        prayerMessage?.let { message ->
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            AppSchedulerState.prayerPassedMessage = null
         }
     }
 
